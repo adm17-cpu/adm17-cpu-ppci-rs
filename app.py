@@ -1,7 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
+from PIL import Image
 
-# 1. Configurar a chave da API do Gemini obtida nos Secrets do Streamlit
+# 1. Configurar a chave da API do Gemini
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
@@ -20,8 +21,22 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Caixa de entrada para o usuário
-if prompt := st.chat_input("Ex: Quais edificações se enquadram como PSPCI?"):
+# --- NOVO: Área de Upload de Imagem na Barra Lateral ---
+st.sidebar.header("📁 Enviar Anexo")
+uploaded_file = st.sidebar.file_uploader(
+    "Envie uma imagem da planta, rascunho ou dúvida técnica (PNG, JPG, JPEG):", 
+    type=["png", "jpg", "jpeg"]
+)
+
+imagem_pil = None
+if uploaded_file is not None:
+    # Abre a imagem usando a biblioteca PIL
+    imagem_pil = Image.open(uploaded_file)
+    # Mostra uma miniatura da imagem na barra lateral para o usuário ver que deu certo
+    st.sidebar.image(imagem_pil, caption="Imagem carregada com sucesso!", use_container_width=True)
+
+# Caixa de entrada para o texto do usuário
+if prompt := st.chat_input("Digite sua dúvida aqui..."):
     with st.chat_message("user"):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -30,20 +45,28 @@ if prompt := st.chat_input("Ex: Quais edificações se enquadram como PSPCI?"):
     system_instruction = (
         "Você é um Engenheiro especialista em Segurança Contra Incêndio, atuando estritamente sob as regras "
         "do Estado do Rio Grande do Sul (Lei Complementar nº 14.376/2013, Decreto nº 51.803/2014 e Resoluções Técnicas do CBMRS).\n\n"
+        "Se o usuário enviar uma imagem (como uma planta baixa ou foto), analise-a com cuidado técnica e "
+        "relacione o que vê com as exigências de PPCI do RS (ex: saídas de emergência, extintores, sinalização).\n\n"
         "Diretrizes:\n"
-        "1. Identifique se o caso do usuário trata-se de CLCB, PSPCI ou PPCI Completo.\n"
+        "1. Identifique se o caso trata-se de CLCB, PSPCI ou PPCI Completo.\n"
         "2. Sempre cite a Lei, Decreto ou número da Resolução Técnica (RT) correspondente na resposta.\n"
-        "3. Se faltarem dados importantes da edificação (como área, altura ou ocupação), peça educadamente.\n"
-        "4. Inclua um breve aviso legal em suas respostas pontuando que a consulta não substitui a responsabilidade técnica do profissional habilitado no SOL-CBMRS."
+        "3. Inclua um breve aviso legal pontuando que a consulta não substitui a responsabilidade técnica no SOL-CBMRS."
     )
 
     try:
-        with st.spinner("Consultando normas do CBMRS..."):
+        with st.spinner("Analisando dados e normas do CBMRS..."):
             model = genai.GenerativeModel(
                 model_name='gemini-2.0-flash',
                 system_instruction=system_instruction
             )
-            response = model.generate_content(prompt)
+            
+            # Se o usuário carregou uma imagem, enviamos o texto E a imagem juntos para a IA
+            if imagem_pil:
+                conteudo_envio = [prompt, imagem_pil]
+            else:
+                conteudo_envio = prompt
+                
+            response = model.generate_content(conteudo_envio)
             
         with st.chat_message("assistant"):
             st.markdown(response.text)
