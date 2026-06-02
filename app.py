@@ -1,72 +1,72 @@
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
 from PIL import Image
+import io
+import base64
 
-# 1. Configurar a chave da API do Gemini
+# 1. Configurar o cliente da Groq
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except Exception:
-    st.error("Erro: A chave 'GEMINI_API_KEY' não foi configurada nos Secrets do Streamlit.")
+    st.error("Erro: A chave 'GROQ_API_KEY' não foi configurada nos Secrets.")
 
 st.set_page_config(page_title="Consultor PPCI-RS", page_icon="🔥")
 st.title("🔥 Consultor PPCI - Rio Grande do Sul")
-st.caption("Orientador de normas técnicas baseado na Lei Kiss (LC 14.376/13) e RTs do CBMRS.")
+st.caption("Orientador de normas técnicas baseado na Lei Kiss e RTs do CBMRS (via Groq).")
 
-# Inicializar o histórico do chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibir mensagens anteriores
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- Área de Upload de Imagem na Barra Lateral ---
+# Barra lateral para upload de imagem
 st.sidebar.header("📁 Enviar Anexo")
-uploaded_file = st.sidebar.file_uploader(
-    "Envie uma imagem da planta, rascunho ou dúvida técnica (PNG, JPG, JPEG):", 
-    type=["png", "jpg", "jpeg"]
-)
+uploaded_file = st.sidebar.file_uploader("Envie uma imagem da dúvida técnica:", type=["png", "jpg", "jpeg"])
 
-imagem_pil = None
+base64_image = None
 if uploaded_file is not None:
-    imagem_pil = Image.open(uploaded_file)
-    st.sidebar.image(imagem_pil, caption="Imagem carregada com sucesso!", use_container_width=True)
+    image = Image.open(uploaded_file)
+    st.sidebar.image(image, caption="Imagem carregada!", use_container_width=True)
+    
+    # Converte imagem para base64 para enviar à Groq
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG")
+    base64_image = base6464encode = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-# Caixa de entrada para o texto do usuário
 if prompt := st.chat_input("Digite sua dúvida aqui..."):
     with st.chat_message("user"):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Prompt de contexto injetado diretamente na conversa para evitar erros 404 de rota
-    contexto_sistema = (
-        "[INSTRUÇÃO DE SISTEMA: Você é um Engenheiro especialista em Segurança Contra Incêndio, "
-        "atuando estritamente sob as regras do Estado do Rio Grande do Sul (Lei Complementar nº 14.376/2013, "
-        "Decreto nº 51.803/2014 e Resoluções Técnicas do CBMRS).\n"
-        "Diretrizes:\n"
-        "1. Identifique se o caso trata-se de CLCB, PSPCI ou PPCI Completo.\n"
-        "2. Sempre cite a Lei, Decreto ou número da Resolução Técnica (RT) correspondente na resposta.\n"
-        "3. Se o usuário enviou uma imagem (como uma planta baixa ou foto), analise-a com cuidado técnico.\n"
-        "4. Inclua um breve aviso legal pontuando que a consulta não substitui a responsabilidade técnica no SOL-CBMRS.]\n\n"
-        f"Pergunta do usuário: {prompt}"
+    # Instrução do sistema
+    system_prompt = (
+        "Você é um Engenheiro especialista em Segurança Contra Incêndio, atuando estritamente sob as regras "
+        "do Estado do Rio Grande do Sul (Lei Complementar nº 14.376/2013, Decreto nº 51.803/2014 e Resoluções Técnicas do CBMRS).\n"
+        "Diretrizes: Identifique se é CLCB, PSPCI ou PPCI Completo. Cite as Leis/RTs. Diga que a consulta não substitui a responsabilidade técnica profissional."
     )
 
+    # Monta a estrutura de conteúdo da mensagem
+    content_list = [{"type": "text", "text": f"{system_prompt}\n\nPergunta: {prompt}"}]
+    
+    if base64_image:
+        content_list.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+        })
+
     try:
-        with st.spinner("Analisando dados e normas do CBMRS..."):
-            # Inicialização limpa do modelo
-            model = genai.GenerativeModel('gemini-2.0-flash')
-            
-            # Se houver imagem, junta o bloco de contexto + a imagem na lista de envio
-            if imagem_pil:
-                conteudo_envio = [contexto_sistema, imagem_pil]
-            else:
-                conteudo_envio = contexto_sistema
-                
-            response = model.generate_content(conteudo_envio)
-            
+        with st.spinner("Consultando regulamentações da Groq..."):
+            # Usando o modelo Llama 3 Vision de alta velocidade e gratuito da Groq
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": content_list}],
+                model="llama-3.2-11b-vision-preview",
+            )
+            response_text = chat_completion.choices[0].message.content
+
         with st.chat_message("assistant"):
-            st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+            st.markdown(response_text)
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
     except Exception as e:
         st.error(f"Erro ao chamar a IA: {e}")
