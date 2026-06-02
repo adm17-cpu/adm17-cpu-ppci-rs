@@ -48,10 +48,10 @@ if prompt := st.chat_input("Digite sua dúvida aqui..."):
 
     try:
         with st.spinner("Consultando regulamentações da Groq..."):
-            # Usando o modelo carro-chefe estável e definitivo da Groq
+            # Modelo estável padrão oficial da Groq
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": pergunta_final}],
-                model="llama-3.3-70b-specdec",
+                model="llama-3.3-70b-versatile",
             )
             response_text = chat_completion.choices[0].message.content
 
