@@ -61,7 +61,7 @@ if prompt := st.chat_input("Digite sua dúvida aqui..."):
             # Usando o modelo Llama 3 Vision de alta velocidade e gratuito da Groq
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": content_list}],
-                model="llama-3.2-90b-vision-preview",
+                model="llama-3.2-11b-vision-instruct",
             )
             response_text = chat_completion.choices[0].message.content
 
