@@ -11,6 +11,21 @@ except Exception:
     st.error("Erro: A chave 'GROQ_API_KEY' não foi configurada nos Secrets.")
 
 st.set_page_config(page_title="Consultor PPCI-RS", page_icon="🔥")
+
+# --- TRUQUE PARA FORÇAR O ÍCONE NO CELULAR ---
+# Usamos um link de um ícone de fogo em alta definição (formato PNG) para o celular reconhecer
+link_icone_fogo = "https://cdn-icons-png.flaticon.com/512/785/785116.png"
+
+st.markdown(
+    f"""
+    <head>
+        <link rel="apple-touch-icon" href="{link_icone_fogo}">
+        <link rel="icon" type="image/png" href="{link_icone_fogo}">
+    </head>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("🔥 Consultor PPCI - Rio Grande do Sul")
 st.caption("Orientador técnico baseado na Lei Kiss e RTs do CBMRS (Suporta Texto, Áudio e Arquivos).")
 
