@@ -4,5 +4,3 @@ audio-recorder-streamlit
 pypdf
 pdf2image
 Pillow
-opencv-python-headless
-numpy
