@@ -11,95 +11,68 @@ except Exception:
     st.error("Erro: A chave 'GROQ_API_KEY' não foi configurada nos Secrets.")
 
 st.set_page_config(page_title="Consultor PPCI-RS", page_icon="🔥")
-
-# --- TRUQUE PARA FORÇAR O ÍCONE NO CELULAR ---
-# Usamos um link de um ícone de fogo em alta definição (formato PNG) para o celular reconhecer
-link_icone_fogo = "https://cdn-icons-png.flaticon.com/512/785/785116.png"
-
-st.markdown(
-    f"""
-    <head>
-        <link rel="apple-touch-icon" href="{link_icone_fogo}">
-        <link rel="icon" type="image/png" href="{link_icone_fogo}">
-    </head>
-    """,
-    unsafe_allow_html=True
-)
-
 st.title("🔥 Consultor PPCI - Rio Grande do Sul")
-st.caption("Orientador técnico baseado na Lei Kiss e RTs do CBMRS (Suporta Texto, Áudio e Arquivos).")
+st.caption("Leitor de Plantas, Documentos Técnicos e Normas do CBMRS.")
 
-# Inicializar o histórico do chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibir mensagens anteriores
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- BARRA LATERAL: ANEXAR ARQUIVOS E GRAVAR ÁUDIO ---
-st.sidebar.header("📁 Central de Anexos")
+# --- BARRA LATERAL: CENTRAL DE ANEXOS (PLANTA E DOCUMENTOS) ---
+st.sidebar.header("📁 Upload da Planta / Memorial")
 
-# Botão para Anexar Arquivos Reais (PDF ou Imagens promocionais/tabelas em formato texto)
 uploaded_file = st.sidebar.file_uploader(
-    "Anexe um documento ou relatório (PDF, PNG, JPG):", 
-    type=["pdf", "png", "jpg", "jpeg"]
+    "Anexe a Planta Baixa ou Memorial descritivo (PDF):", 
+    type=["pdf"]
 )
 
-conteudo_arquivo = ""
+conteudo_planta = ""
 if uploaded_file is not None:
-    st.sidebar.success(f"Arquivo '{uploaded_file.name}' carregado!")
+    st.sidebar.success(f"Planta '{uploaded_file.name}' carregada para análise!")
     
-    # Se for PDF, extrai o texto para ajudar a IA
-    if uploaded_file.name.endswith(".pdf"):
+    # Processa o PDF em busca de textos estruturados, quadros de áreas e tabelas de equipamentos
+    with st.sidebar.spinner("Processando texto e tabelas da planta..."):
         try:
             reader = PdfReader(uploaded_file)
-            texto_pdf = ""
-            for page in reader.pages:
-                texto_pdf += page.extract_text() or ""
-            conteudo_arquivo = f"\n[Texto extraído do documento anexo {uploaded_file.name}]:\n{texto_pdf[:4000]}" # Limita tamanho
-        except Exception:
-            conteudo_arquivo = f"\n[O usuário anexou o PDF {uploaded_file.name}, mas não foi possível extrair o texto automaticamente.]"
-    else:
-        conteudo_arquivo = f"\n[O usuário anexou uma imagem chamada {uploaded_file.name} para referência técnica.]"
+            texto_extraido = ""
+            
+            # Percorre as páginas buscando dados de legendas e listas de itens
+            for idx, page in enumerate(reader.pages):
+                texto_pagina = page.extract_text()
+                if texto_pagina:
+                    texto_extraido += f"\n--- PÁGINA {idx+1} ---\n{texto_pagina}"
+            
+            # Guarda os dados para enviar à IA
+            # Limitamos para os primeiros 6000 caracteres para não estourar o limite técnico
+            conteudo_planta = texto_extraido[:6000]
+            st.sidebar.info("Dados de texto e tabelas mapeados com sucesso!")
+        except Exception as e:
+            st.sidebar.error(f"Erro ao processar a estrutura do PDF: {e}")
 
 st.sidebar.write("---")
-st.sidebar.subheader("🎙️ Gravar Pergunta por Voz")
-st.sidebar.write("Clique no microfone abaixo, fale sua dúvida e clique novamente para encerrar:")
+st.sidebar.subheader("🎙️ Comando por Voz")
 
-# Gravador de áudio nativo na barra lateral
-audio_bytes = audio_recorder(
-    text="",
-    recording_color="#e85a4f",
-    neutral_color="#6aa84f",
-    icon_size="2x"
-)
+audio_bytes = audio_recorder(text="", recording_color="#e85a4f", neutral_color="#6aa84f", icon_size="2x")
 
 texto_audio_transcrito = ""
 if audio_bytes:
-    st.sidebar.audio(audio_bytes, format="audio/wav")
-    with st.sidebar.spinner("Transcrevendo sua voz..."):
+    with st.sidebar.spinner("Processando voz..."):
         try:
-            # Envia o áudio gravado para o modelo Whisper da Groq (100% gratuito e ultra preciso)
             id_audio = ("fala.wav", audio_bytes, "audio/wav")
             transcription = client.audio.transcriptions.create(
-                file=id_audio,
-                model="whisper-large-v3",
-                prompt="Termos técnicos sobre PPCI, bombeiros, Lei Kiss, RT, CBMRS, CLCB, PSPCI.",
-                response_format="text"
+                file=id_audio, model="whisper-large-v3", response_format="text"
             )
             texto_audio_transcrito = transcription
-            st.sidebar.success("Áudio transcrito com sucesso!")
-            st.sidebar.info(f"Identificado: \"{texto_audio_transcrito}\"")
+            st.sidebar.success(f"Ouvido: \"{texto_audio_transcrito}\"")
         except Exception as e:
-            st.sidebar.error(f"Erro ao transcrever áudio: {e}")
+            st.sidebar.error(f"Erro no áudio: {e}")
 
-# --- PROCESSAMENTO DA MENSAGEM ---
-# O prompt do usuário pode vir tanto da caixa de texto padrão quanto do microfone lateral
-prompt = st.chat_input("Digite sua dúvida aqui...")
+# --- ENTRADA DE PERGUNTAS ---
+prompt = st.chat_input("Ex: 'Faça a contagem e liste os itens de segurança que você encontrou nesta planta'")
 
-# Se o usuário usou o áudio e não digitou nada, assume o texto do áudio como o prompt principal
 if texto_audio_transcrito and not prompt:
     prompt = texto_audio_transcrito
 
@@ -108,24 +81,26 @@ if prompt:
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Instrução de sistema fixa
+    # Instruções rigorosas para o Engenheiro Virtual mapear itens
     system_prompt = (
-        "Você é um Engenheiro especialista em Segurança Contra Incêndio, atuando estritamente sob as regras "
-        "do Estado do Rio Grande do Sul (Lei Complementar nº 14.376/2013, Decreto nº 51.803/2014 e Resoluções Técnicas do CBMRS).\n"
-        "Diretrizes:\n"
-        "1. Identifique se o caso trata-se de CLCB, PSPCI ou PPCI Completo.\n"
-        "2. Sempre cite a Lei, Decreto ou número da Resolução Técnica (RT) correspondente na resposta.\n"
-        "3. Se houver dados de arquivos anexados abaixo, use-os para fundamentar sua resposta técnica.\n"
-        "4. Inclua o aviso legal informando que a consulta não substitui a responsabilidade técnica no SOL-CBMRS."
+        "Você é um Engenheiro especialista em Segurança Contra Incêndio no Rio Grande do Sul.\n"
+        "O usuário enviou os dados extraídos de uma planta baixa/documento em PDF. Seu objetivo principal é:\n"
+        "1. Analisar as tabelas, notas de rodapé, quadros de resumo e legendas textuais fornecidas na planta.\n"
+        "2. Identificar e listar detalhadamente todos os itens de segurança encontrados (ex: Extintores, Sinalizações, Hidrantes, Iluminação de Emergência).\n"
+        "3. Apresentar uma contagem ou quantitativo estimado baseado puramente nos dados extraídos do documento.\n"
+        "4. Cruzar esses dados com as Resoluções Técnicas (RTs) do CBMRS e indicar se a lista parece adequada ou se faltam itens obrigatórios para a edificação.\n"
+        "5. Finalizar lembrando que a conferência não substitui a responsabilidade técnica do profissional no SOL-CBMRS."
     )
 
-    # Junta o comportamento + a pergunta + o texto do arquivo anexado
+    # Une o prompt técnico, as instruções de contagem e os dados lidos do PDF da planta
     pergunta_final = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
-    if conteudo_arquivo:
-        pergunta_final += f"\n\n{conteudo_arquivo}"
+    if conteudo_planta:
+        pergunta_final += f"\n\n[DADOS EXTRAÍDOS DIRETAMENTE DO ARQUIVO DA PLANTA]:\n{conteudo_planta}"
+    else:
+        pergunta_final += "\n\n[Aviso: O usuário não anexou nenhuma planta em PDF para esta consulta ainda.]"
 
     try:
-        with st.spinner("Analisando regulamentações do CBMRS..."):
+        with st.spinner("Mapeando símbolos e gerando quantitativos da planta..."):
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": pergunta_final}],
                 model="llama-3.3-70b-versatile",
