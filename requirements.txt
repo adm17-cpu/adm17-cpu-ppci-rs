@@ -2,3 +2,5 @@ streamlit
 groq
 audio-recorder-streamlit
 pypdf
+pdf2image
+Pillow
